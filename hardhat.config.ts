@@ -31,17 +31,17 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: {
-      monadTestnet: "abc",
+      monadTestnet: ETHERSCAN_API_KEY,
       monadMainnet: ETHERSCAN_API_KEY,
     },
     customChains: [
-      // ─── Testnet (unchanged) ───────────────────────────────
+      // ─── Testnet — Etherscan v2 ────────────────────────────
       {
         network: "monadTestnet",
         chainId: 10143,
         urls: {
-          apiURL:     "https://testnet.monadexplorer.com/api",
-          browserURL: "https://testnet.monadexplorer.com",
+          apiURL:     "https://api.etherscan.io/v2/api?chainid=10143",
+          browserURL: "https://testnet.monadscan.com",
         },
       },
       // ─── Mainnet — Etherscan v2 (primary verification) ────

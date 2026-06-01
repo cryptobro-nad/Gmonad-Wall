@@ -174,7 +174,10 @@ describe("GmonadWallCore", () => {
     });
   });
 
-  // ─── 6. hidePost available while paused ───────────────────────────────────
+  // ─── 6. Admin functions available while paused ───────────────────────────
+  // hidePost, setCooldown, setMaxTextLength, and setMaxMediaURILength are all
+  // intentionally available while paused — the owner must be able to moderate
+  // and adjust parameters at any time, including during an emergency pause.
 
   describe("hidePost available while paused", () => {
     beforeEach(async () => {
@@ -349,6 +352,9 @@ describe("GmonadWallCore", () => {
   });
 
   // ─── 10. Cooldown ─────────────────────────────────────────────────────────
+  // Cooldown is tracked per wallet address. A new wallet bypasses any other
+  // wallet's cooldown window. This is a UX rate-limit, not strong Sybil or
+  // spam prevention — a user can trivially post from multiple wallets.
 
   describe("cooldown", () => {
     it("cannot post during cooldown", async () => {
@@ -453,6 +459,10 @@ describe("GmonadWallCore", () => {
   });
 
   // ─── 12. setMaxMediaURILength ─────────────────────────────────────────────
+  // Setting maxMediaURILength to 0 effectively disables all media posting:
+  // any non-empty mediaURI will exceed the 0-byte limit and revert.
+  // This is a deliberate owner lever for launch — media posting is not
+  // exposed in the UI at launch but the struct fields are reserved.
 
   describe("setMaxMediaURILength", () => {
     it("owner can update max media URI length", async () => {
@@ -683,6 +693,10 @@ describe("GmonadWallCore", () => {
   });
 
   // ─── 16. Moderation (hidePost) ────────────────────────────────────────────
+  // hidePost sets a boolean flag on the post struct. It does not delete the
+  // post or remove its data from storage. The PostCreated event and all post
+  // fields remain permanently readable on-chain and in the explorer. The
+  // hidden flag is only a signal to the frontend to suppress display.
 
   describe("hidePost", () => {
     beforeEach(async () => {
@@ -729,6 +743,160 @@ describe("GmonadWallCore", () => {
       await wall.hidePost(0, true);
       const [, , , , , , , hiddenFlags] = await wall.getPostsByWallet(alice.address, 1);
       expect(hiddenFlags[0]).to.equal(true);
+    });
+  });
+
+  // ─── 17. transferOwnership / admin authority ──────────────────────────────
+  // OZ Ownable v5 uses a single-step transfer: the new owner takes effect
+  // immediately on transferOwnership(). There is no pending-acceptance step.
+  // The old owner loses all onlyOwner access atomically.
+
+  describe("transferOwnership / admin authority", () => {
+    let newOwner: SignerWithAddress;
+
+    beforeEach(async () => {
+      newOwner = carol;
+      await wall.transferOwnership(newOwner.address);
+    });
+
+    it("owner() reflects the new owner after transfer", async () => {
+      expect(await wall.owner()).to.equal(newOwner.address);
+    });
+
+    // ── Old owner loses all access ────────────────────────────
+    it("old owner can no longer pause", async () => {
+      await expect(
+        wall.connect(owner).pause()
+      ).to.be.revertedWithCustomError(wall, "OwnableUnauthorizedAccount");
+    });
+    it("old owner can no longer unpause", async () => {
+      await wall.connect(newOwner).pause();
+      await expect(
+        wall.connect(owner).unpause()
+      ).to.be.revertedWithCustomError(wall, "OwnableUnauthorizedAccount");
+    });
+    it("old owner can no longer hidePost", async () => {
+      await wall.connect(alice).postMessage("a post");
+      await expect(
+        wall.connect(owner).hidePost(0, true)
+      ).to.be.revertedWithCustomError(wall, "OwnableUnauthorizedAccount");
+    });
+    it("old owner can no longer setCooldown", async () => {
+      await expect(
+        wall.connect(owner).setCooldown(120)
+      ).to.be.revertedWithCustomError(wall, "OwnableUnauthorizedAccount");
+    });
+    it("old owner can no longer setMaxTextLength", async () => {
+      await expect(
+        wall.connect(owner).setMaxTextLength(200)
+      ).to.be.revertedWithCustomError(wall, "OwnableUnauthorizedAccount");
+    });
+    it("old owner can no longer setMaxMediaURILength", async () => {
+      await expect(
+        wall.connect(owner).setMaxMediaURILength(500)
+      ).to.be.revertedWithCustomError(wall, "OwnableUnauthorizedAccount");
+    });
+
+    // ── New owner gains all access ────────────────────────────
+    it("new owner can pause", async () => {
+      await expect(wall.connect(newOwner).pause()).to.not.be.reverted;
+      expect(await wall.paused()).to.equal(true);
+    });
+    it("new owner can unpause", async () => {
+      await wall.connect(newOwner).pause();
+      await expect(wall.connect(newOwner).unpause()).to.not.be.reverted;
+      expect(await wall.paused()).to.equal(false);
+    });
+    it("new owner can hide and unhide posts", async () => {
+      await wall.connect(alice).postMessage("a post");
+      await expect(wall.connect(newOwner).hidePost(0, true)).to.not.be.reverted;
+      const [, , , , , , , hiddenAfterHide] = await wall.getLatestPosts(1);
+      expect(hiddenAfterHide[0]).to.equal(true);
+      await expect(wall.connect(newOwner).hidePost(0, false)).to.not.be.reverted;
+      const [, , , , , , , hiddenAfterUnhide] = await wall.getLatestPosts(1);
+      expect(hiddenAfterUnhide[0]).to.equal(false);
+    });
+    it("new owner can update cooldown", async () => {
+      await expect(wall.connect(newOwner).setCooldown(120)).to.not.be.reverted;
+      expect(await wall.cooldown()).to.equal(120);
+    });
+    it("new owner can update maxTextLength", async () => {
+      await expect(wall.connect(newOwner).setMaxTextLength(200)).to.not.be.reverted;
+      expect(await wall.maxTextLength()).to.equal(200);
+    });
+    it("new owner can update maxMediaURILength", async () => {
+      await expect(wall.connect(newOwner).setMaxMediaURILength(500)).to.not.be.reverted;
+      expect(await wall.maxMediaURILength()).to.equal(500);
+    });
+  });
+
+  // ─── 18. Paused — failed writes do not mutate state ──────────────────────
+  // EnforcedPause reverts before any storage write. Verifies atomicity:
+  // post count, Nad count, nadIdOf, wallet post list, and cooldown are all
+  // unchanged after a blocked postMessage or postMessageWithMedia call.
+
+  describe("paused — failed writes do not mutate state", () => {
+    beforeEach(async () => {
+      await wall.connect(alice).postMessage("pre-pause post");
+      await wall.pause();
+    });
+
+    it("postMessage revert leaves post count unchanged", async () => {
+      const before = await wall.getPostCount();
+      try { await wall.connect(bob).postMessage("blocked"); } catch (_) {}
+      expect(await wall.getPostCount()).to.equal(before);
+    });
+    it("postMessage revert leaves Nad count unchanged", async () => {
+      const before = await wall.getNadCount();
+      try { await wall.connect(bob).postMessage("blocked"); } catch (_) {}
+      expect(await wall.getNadCount()).to.equal(before);
+    });
+    it("postMessage revert does not assign a Nad ID to a new caller", async () => {
+      // bob has never posted — nadIdOf must remain 0 after a paused revert
+      expect(await wall.nadIdOf(bob.address)).to.equal(0);
+      try { await wall.connect(bob).postMessage("blocked"); } catch (_) {}
+      expect(await wall.nadIdOf(bob.address)).to.equal(0);
+    });
+    it("postMessage revert leaves caller's wallet post list unchanged", async () => {
+      const [idsBefore] = await wall.getPostsByWallet(alice.address, 10);
+      try { await wall.connect(alice).postMessage("blocked"); } catch (_) {}
+      const [idsAfter] = await wall.getPostsByWallet(alice.address, 10);
+      expect(idsAfter.length).to.equal(idsBefore.length);
+    });
+    it("postMessage revert does not reset or extend caller's cooldown", async () => {
+      // alice is in cooldown after the pre-pause post; the blocked tx cannot
+      // update lastPostTime, so remaining can only decrease (time passing), not increase
+      const before = await wall.getCooldownRemaining(alice.address);
+      try { await wall.connect(alice).postMessage("blocked"); } catch (_) {}
+      const after = await wall.getCooldownRemaining(alice.address);
+      expect(after).to.be.lte(before);
+    });
+    it("postMessage revert does not affect cooldown of a new caller", async () => {
+      // bob has never posted — getCooldownRemaining must still return 0 after revert
+      expect(await wall.getCooldownRemaining(bob.address)).to.equal(0);
+      try { await wall.connect(bob).postMessage("blocked"); } catch (_) {}
+      expect(await wall.getCooldownRemaining(bob.address)).to.equal(0);
+    });
+    it("postMessage revert does not emit PostCreated", async () => {
+      await expect(
+        wall.connect(alice).postMessage("blocked")
+      ).to.be.revertedWithCustomError(wall, "EnforcedPause");
+    });
+    it("postMessageWithMedia revert leaves post count unchanged", async () => {
+      const before = await wall.getPostCount();
+      try { await wall.connect(bob).postMessageWithMedia("blocked", "https://img.example.com", 1); } catch (_) {}
+      expect(await wall.getPostCount()).to.equal(before);
+    });
+    it("postMessageWithMedia revert does not assign a Nad ID to a new caller", async () => {
+      expect(await wall.nadIdOf(carol.address)).to.equal(0);
+      try { await wall.connect(carol).postMessageWithMedia("blocked", "https://img.example.com", 1); } catch (_) {}
+      expect(await wall.nadIdOf(carol.address)).to.equal(0);
+    });
+    it("postMessageWithMedia revert leaves wallet post list unchanged", async () => {
+      const [idsBefore] = await wall.getPostsByWallet(alice.address, 10);
+      try { await wall.connect(alice).postMessageWithMedia("blocked", "https://img.example.com", 1); } catch (_) {}
+      const [idsAfter] = await wall.getPostsByWallet(alice.address, 10);
+      expect(idsAfter.length).to.equal(idsBefore.length);
     });
   });
 });
