@@ -1,0 +1,35 @@
+﻿# Secrets — never commit
+.env
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Hardhat build output
+artifacts/
+cache/
+typechain-types/
+
+# Frontend build output
+frontend/dist/
+frontend/.vite/
+
+# Vercel
+.vercel/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
