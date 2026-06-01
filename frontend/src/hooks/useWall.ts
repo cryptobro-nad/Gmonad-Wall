@@ -1,69 +1,78 @@
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
-import { GmonadWallABI } from "../abi/GmonadWall";
-import { GmonadWallV2ABI } from "../abi/GmonadWallV2";
-import { CONTRACT_ADDRESS_V1, CONTRACT_ADDRESS_V2, monadTestnet } from "../wagmiConfig";
+import { GmonadWallCoreABI } from "../abi/GmonadWallCore";
+import { CONTRACT_ADDRESS, monadMainnet } from "../wagmiConfig";
 
-// ─── V1 hooks (read-only) ────────────────────────────────────────────────────
+// All hooks in this file target the mainnet GmonadWallCore contract only.
+// No testnet references. No V1/V2 contracts. Archive reads live in useArchive.ts.
 
-export function useMessageCount() {
+// ─── Read hooks ───────────────────────────────────────────────────────────────
+
+export function usePaused() {
   return useReadContract({
-    address: CONTRACT_ADDRESS_V1,
-    abi: GmonadWallABI,
-    functionName: "getMessageCount",
-    chainId: monadTestnet.id,
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
+    functionName: "paused",
+    chainId: monadMainnet.id,
   });
 }
 
-export function useLatestMessages(limit: number) {
+export function usePostCount() {
   return useReadContract({
-    address: CONTRACT_ADDRESS_V1,
-    abi: GmonadWallABI,
-    functionName: "getLatestMessages",
-    args: [BigInt(limit)],
-    chainId: monadTestnet.id,
-  });
-}
-
-// ─── V2 hooks ────────────────────────────────────────────────────────────────
-
-export function usePostCountV2() {
-  return useReadContract({
-    address: CONTRACT_ADDRESS_V2,
-    abi: GmonadWallV2ABI,
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
     functionName: "getPostCount",
-    chainId: monadTestnet.id,
+    chainId: monadMainnet.id,
   });
 }
 
-export function useLatestPostsV2(limit: number) {
+export function useNadCount() {
   return useReadContract({
-    address: CONTRACT_ADDRESS_V2,
-    abi: GmonadWallV2ABI,
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
+    functionName: "getNadCount",
+    chainId: monadMainnet.id,
+  });
+}
+
+export function useLatestPosts(limit: number) {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
     functionName: "getLatestPosts",
     args: [BigInt(limit)],
-    chainId: monadTestnet.id,
+    chainId: monadMainnet.id,
   });
 }
 
-export function useCooldownRemainingV2(address: `0x${string}` | undefined) {
+export function useMaxTextLength() {
   return useReadContract({
-    address: CONTRACT_ADDRESS_V2,
-    abi: GmonadWallV2ABI,
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
+    functionName: "maxTextLength",
+    chainId: monadMainnet.id,
+  });
+}
+
+export function useCooldownRemaining(address: `0x${string}` | undefined) {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
     functionName: "getCooldownRemaining",
     args: address ? [address] : undefined,
     query: { enabled: !!address, refetchInterval: 5000 },
-    chainId: monadTestnet.id,
+    chainId: monadMainnet.id,
   });
 }
 
-export function usePostsBeforeV2() {
-  const client = usePublicClient({ chainId: monadTestnet.id });
+// Imperative pagination read — uses usePublicClient to avoid reactive re-fetches on every render.
+export function usePostsBefore() {
+  const client = usePublicClient({ chainId: monadMainnet.id });
 
   async function fetchBefore(beforeId: bigint, limit: number) {
     if (!client) return null;
     return client.readContract({
-      address: CONTRACT_ADDRESS_V2,
-      abi: GmonadWallV2ABI,
+      address: CONTRACT_ADDRESS,
+      abi: GmonadWallCoreABI,
       functionName: "getPostsBefore",
       args: [beforeId, BigInt(limit)],
     });
@@ -72,54 +81,79 @@ export function usePostsBeforeV2() {
   return { fetchBefore };
 }
 
-export function useNadCountV2() {
+export function useOwner() {
   return useReadContract({
-    address: CONTRACT_ADDRESS_V2,
-    abi: GmonadWallV2ABI,
-    functionName: "getNadCount",
-    chainId: monadTestnet.id,
-  });
-}
-
-export function useOwnerV2() {
-  return useReadContract({
-    address: CONTRACT_ADDRESS_V2,
-    abi: GmonadWallV2ABI,
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
     functionName: "owner",
-    chainId: monadTestnet.id,
+    chainId: monadMainnet.id,
   });
 }
 
-export function useHidePostV2() {
+// ─── Write hooks ──────────────────────────────────────────────────────────────
+
+export function usePostMessage() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  function post(text: string) {
+    writeContract({
+      address: CONTRACT_ADDRESS,
+      abi: GmonadWallCoreABI,
+      functionName: "postMessage",
+      args: [text],
+      chainId: monadMainnet.id,
+    });
+  }
+
+  return { post, hash, isPending, isConfirming, isSuccess, error };
+}
+
+export function useHidePost() {
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   function hide(postId: bigint, hidden: boolean) {
     writeContract({
-      address: CONTRACT_ADDRESS_V2,
-      abi: GmonadWallV2ABI,
+      address: CONTRACT_ADDRESS,
+      abi: GmonadWallCoreABI,
       functionName: "hidePost",
       args: [postId, hidden],
-      chainId: monadTestnet.id,
+      chainId: monadMainnet.id,
     });
   }
 
   return { hide, hash, isPending, isConfirming, isSuccess, error, reset };
 }
 
-export function usePostMessageV2() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
+export function usePause() {
+  const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  function post(text: string) {
+  function pause() {
     writeContract({
-      address: CONTRACT_ADDRESS_V2,
-      abi: GmonadWallV2ABI,
-      functionName: "postMessage",
-      args: [text],
-      chainId: monadTestnet.id,
+      address: CONTRACT_ADDRESS,
+      abi: GmonadWallCoreABI,
+      functionName: "pause",
+      chainId: monadMainnet.id,
     });
   }
 
-  return { post, hash, isPending, isConfirming, isSuccess, error };
+  return { pause, hash, isPending, isConfirming, isSuccess, error, reset };
+}
+
+export function useUnpause() {
+  const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  function unpause() {
+    writeContract({
+      address: CONTRACT_ADDRESS,
+      abi: GmonadWallCoreABI,
+      functionName: "unpause",
+      chainId: monadMainnet.id,
+    });
+  }
+
+  return { unpause, hash, isPending, isConfirming, isSuccess, error, reset };
 }

@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccount } from "wagmi";
-import { useCooldownRemainingV2, usePostMessageV2 } from "../hooks/useWall";
-import { monadTestnet } from "../wagmiConfig";
+import { useCooldownRemaining, useMaxTextLength, usePostMessage } from "../hooks/useWall";
+import { CONTRACT_CONFIGURED, monadMainnet } from "../wagmiConfig";
 
-const MAX_BYTES = 240;
+// Fallback byte limit if the on-chain value cannot be read yet.
+// Matches GmonadWallCore default (120 bytes). Prevents avoidable reverts.
+const MAX_BYTES_FALLBACK = 120;
 
 function byteLength(str: string) {
   return new TextEncoder().encode(str).length;
@@ -18,20 +20,28 @@ function formatCooldown(seconds: bigint) {
 
 interface Props {
   onPosted: () => void;
+  isPaused: boolean;
 }
 
-export function MessageInput({ onPosted }: Props) {
+export function MessageInput({ onPosted, isPaused }: Props) {
   const { address, isConnected, chainId: walletChainId } = useAccount();
-  const onCorrectChain = walletChainId === monadTestnet.id;
+  // Independent chain check — does not rely on NetworkGuard context
+  const onCorrectChain = walletChainId === monadMainnet.id;
   const [text, setText] = useState("");
-  const bytes = byteLength(text);
-  const overLimit = bytes > MAX_BYTES;
 
-  const { data: cooldown, refetch: refetchCooldown } = useCooldownRemainingV2(address);
-  const { post, hash, isPending, isConfirming, isSuccess, error } = usePostMessageV2();
+  // Effective byte limit: on-chain value with fallback to 120.
+  // Both the counter display and the submit guard use this same value.
+  const { data: maxTextLengthData } = useMaxTextLength();
+  const effectiveMax = maxTextLengthData !== undefined ? Number(maxTextLengthData) : MAX_BYTES_FALLBACK;
+
+  const bytes = byteLength(text);
+  const overLimit = bytes > effectiveMax;
+
+  const { data: cooldown, refetch: refetchCooldown } = useCooldownRemaining(address);
+  const { post, hash, isPending, isConfirming, isSuccess, error } = usePostMessage();
   const lastHandledHash = useRef<string | undefined>(undefined);
 
-  // tick cooldown down every second
+  // Tick cooldown down every second
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!cooldown || cooldown === 0n) return;
@@ -57,11 +67,46 @@ export function MessageInput({ onPosted }: Props) {
   }, [isSuccess, hash, onSuccess]);
 
   const inCooldown = !!cooldown && cooldown > 0n;
-  const canSubmit = isConnected && onCorrectChain && !overLimit && bytes > 0 && !inCooldown && !isPending && !isConfirming;
+
+  // All gates must pass before the Post button is enabled.
+  // isPaused is an additional gate — cannot submit even if all other conditions are met.
+  const canSubmit =
+    CONTRACT_CONFIGURED &&
+    isConnected &&
+    onCorrectChain &&
+    !overLimit &&
+    bytes > 0 &&
+    !inCooldown &&
+    !isPending &&
+    !isConfirming &&
+    !isPaused;
+
+  // Fix 5: Contract not configured — show before any other state.
+  // No wallet transaction should ever be attempted if the contract is undeployed.
+  if (!CONTRACT_CONFIGURED) {
+    return (
+      <p className="text-center text-gray-500 text-sm py-3 md:py-4">
+        Mainnet contract is not configured yet.
+      </p>
+    );
+  }
+
+  // Paused banner — wall is readable but posting is blocked.
+  if (isPaused) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-4 text-center">
+        <p className="text-yellow-400 text-sm font-medium">
+          The wall is temporarily paused. All posts remain visible.
+        </p>
+      </div>
+    );
+  }
 
   if (!isConnected) {
     return (
-      <p className="text-center text-gray-500 text-sm py-3 md:py-4">Connect your wallet to post a message.</p>
+      <p className="text-center text-gray-500 text-sm py-3 md:py-4">
+        Connect your wallet to post a message.
+      </p>
     );
   }
 
@@ -76,7 +121,7 @@ export function MessageInput({ onPosted }: Props) {
       />
       <div className="flex items-center justify-between gap-3">
         <span className={`text-xs font-mono ${overLimit ? "text-red-400" : "text-gray-400"}`}>
-          {bytes} / {MAX_BYTES} bytes
+          {bytes} / {effectiveMax} bytes
         </span>
 
         <div className="flex items-center gap-3">
@@ -86,7 +131,7 @@ export function MessageInput({ onPosted }: Props) {
             </span>
           )}
           <button
-            onClick={() => { if (!onCorrectChain) return; post(text); }}
+            onClick={() => { if (!onCorrectChain || isPaused || !CONTRACT_CONFIGURED) return; post(text); }}
             disabled={!canSubmit}
             className="px-5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -97,7 +142,7 @@ export function MessageInput({ onPosted }: Props) {
 
       {isConnected && !onCorrectChain && (
         <p className="text-xs text-yellow-400">
-          Switch to Monad Testnet before posting.
+          Switch to Monad Mainnet before posting.
         </p>
       )}
 
