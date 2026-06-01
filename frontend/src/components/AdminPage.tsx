@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
-import { useHidePostV2, useLatestPostsV2, useOwnerV2 } from "../hooks/useWall";
+import { useHidePost, useLatestPosts, useOwner, usePause, usePaused, useUnpause } from "../hooks/useWall";
 
 function timeAgo(unixSeconds: bigint) {
   const diff = Math.floor(Date.now() / 1000) - Number(unixSeconds);
@@ -12,23 +12,40 @@ function timeAgo(unixSeconds: bigint) {
 
 export function AdminPage() {
   const { address, isConnected } = useAccount();
-  const { data: owner } = useOwnerV2();
-  const { data: postsData, refetch } = useLatestPostsV2(50);
-  const { hide, isPending, isConfirming, isSuccess, error, reset } = useHidePostV2();
-  const [pendingId, setPendingId] = useState<bigint | null>(null);
-  const lastHandled = useRef<string | undefined>(undefined);
+  const { data: owner } = useOwner();
+  const { data: postsData, refetch } = useLatestPosts(50);
+  const { data: isPausedData } = usePaused();
+  const isPaused = isPausedData === true;
+
+  // Hide/unhide
+  const { hide, isPending: hideIsPending, isConfirming: hideIsConfirming, isSuccess: hideIsSuccess, error: hideError, reset: hideReset } = useHidePost();
+  const [pendingHideId, setPendingHideId] = useState<bigint | null>(null);
+  const lastHandledHide = useRef<string | undefined>(undefined);
+
+  // Pause/unpause
+  const { pause, isPending: pauseIsPending, isConfirming: pauseIsConfirming, isSuccess: pauseIsSuccess, error: pauseError, reset: pauseReset } = usePause();
+  const { unpause, isPending: unpauseIsPending, isConfirming: unpauseIsConfirming, isSuccess: unpauseIsSuccess, error: unpauseError, reset: unpauseReset } = useUnpause();
+  const pauseBusy = pauseIsPending || pauseIsConfirming || unpauseIsPending || unpauseIsConfirming;
 
   useEffect(() => {
-    if (isSuccess && pendingId !== null) {
-      const key = pendingId.toString();
-      if (key !== lastHandled.current) {
-        lastHandled.current = key;
+    if (hideIsSuccess && pendingHideId !== null) {
+      const key = pendingHideId.toString();
+      if (key !== lastHandledHide.current) {
+        lastHandledHide.current = key;
         refetch();
-        reset();
-        setPendingId(null);
+        hideReset();
+        setPendingHideId(null);
       }
     }
-  }, [isSuccess, pendingId, refetch, reset]);
+  }, [hideIsSuccess, pendingHideId, refetch, hideReset]);
+
+  useEffect(() => {
+    if (pauseIsSuccess) { pauseReset(); }
+  }, [pauseIsSuccess, pauseReset]);
+
+  useEffect(() => {
+    if (unpauseIsSuccess) { unpauseReset(); }
+  }, [unpauseIsSuccess, unpauseReset]);
 
   const isOwner =
     isConnected &&
@@ -51,11 +68,11 @@ export function AdminPage() {
   }, [postsData]);
 
   const handleToggle = useCallback((id: bigint, currentlyHidden: boolean) => {
-    setPendingId(id);
+    setPendingHideId(id);
     hide(id, !currentlyHidden);
   }, [hide]);
 
-  const isBusy = isPending || isConfirming;
+  const hideBusy = hideIsPending || hideIsConfirming;
 
   if (!isConnected) {
     return (
@@ -75,6 +92,40 @@ export function AdminPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 flex flex-col gap-6">
+
+      {/* Contract status section */}
+      <div className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${isPaused ? "bg-red-400" : "bg-emerald-400"}`} />
+          <span className="text-sm text-gray-400">
+            Contract: <span className={isPaused ? "text-red-400 font-medium" : "text-emerald-400 font-medium"}>
+              {isPaused ? "Paused" : "Active"}
+            </span>
+          </span>
+        </div>
+        <button
+          onClick={() => isPaused ? unpause() : pause()}
+          disabled={pauseBusy}
+          className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            isPaused
+              ? "bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300"
+              : "bg-red-900/50 hover:bg-red-800/60 text-red-300"
+          }`}
+        >
+          {pauseBusy
+            ? (pauseIsPending || unpauseIsPending ? "Confirm in wallet…" : "Confirming…")
+            : isPaused ? "Resume Wall" : "Pause Wall"}
+        </button>
+      </div>
+
+      {(pauseError || unpauseError) && (
+        <p className="text-xs text-red-400">
+          {((pauseError || unpauseError) as { shortMessage?: string })?.shortMessage ??
+           (pauseError || unpauseError)?.message}
+        </p>
+      )}
+
+      {/* Moderation section */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-white">Moderate Posts</h2>
         <span className="text-xs text-gray-600 font-mono">{posts.length} posts loaded</span>
@@ -85,7 +136,7 @@ export function AdminPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {posts.map((post) => {
-            const isActing = pendingId === post.id && isBusy;
+            const isActing = pendingHideId === post.id && hideBusy;
             return (
               <div
                 key={post.id.toString()}
@@ -108,7 +159,7 @@ export function AdminPage() {
                     <span className="text-xs text-gray-600">{timeAgo(post.timestamp)}</span>
                     <button
                       onClick={() => handleToggle(post.id, post.hidden)}
-                      disabled={isBusy}
+                      disabled={hideBusy}
                       className={`px-3 py-1 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                         post.hidden
                           ? "bg-gray-700 hover:bg-gray-600 text-gray-200"
@@ -116,7 +167,7 @@ export function AdminPage() {
                       }`}
                     >
                       {isActing
-                        ? isPending ? "Confirm in wallet…" : "Confirming…"
+                        ? hideIsPending ? "Confirm in wallet…" : "Confirming…"
                         : post.hidden ? "Unhide" : "Hide from wall"}
                     </button>
                   </div>
@@ -128,9 +179,9 @@ export function AdminPage() {
         </div>
       )}
 
-      {error && (
+      {hideError && (
         <p className="text-xs text-red-400">
-          {(error as { shortMessage?: string }).shortMessage ?? error.message}
+          {(hideError as { shortMessage?: string }).shortMessage ?? hideError.message}
         </p>
       )}
     </div>

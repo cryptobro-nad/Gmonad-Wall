@@ -1,5 +1,5 @@
 export interface UnifiedPost {
-  source: "v1" | "v2";
+  source: "v1" | "v2" | "mainnet";
   id: bigint;
   nadId: bigint | null;
   text: string;

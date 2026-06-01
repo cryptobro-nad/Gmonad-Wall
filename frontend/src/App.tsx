@@ -4,6 +4,8 @@ import { NetworkGuard } from "./components/NetworkGuard";
 import { MessageInput } from "./components/MessageInput";
 import { MessageWall } from "./components/MessageWall";
 import { AdminPage } from "./components/AdminPage";
+import { ArchiveWall } from "./components/ArchiveWall";
+import { usePaused } from "./hooks/useWall";
 
 export function App() {
   const [refreshSignal, setRefreshSignal] = useState(0);
@@ -15,7 +17,13 @@ export function App() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  const isAdmin = hash === "#admin";
+  const isAdmin   = hash === "#admin";
+  const isArchive = hash === "#archive";
+
+  // Read paused state from mainnet contract.
+  // Undefined (e.g. contract address not yet set) is treated as not paused.
+  const { data: isPausedData } = usePaused();
+  const isPaused = isPausedData === true;
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
@@ -38,7 +46,7 @@ export function App() {
             <WalletButton />
             <span className="flex items-center gap-1 text-[10px] text-gray-500 whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              Monad Testnet
+              Monad Mainnet
             </span>
           </div>
         </div>
@@ -48,6 +56,8 @@ export function App() {
       <div className="overflow-x-hidden">
         {isAdmin ? (
           <AdminPage />
+        ) : isArchive ? (
+          <ArchiveWall />
         ) : (
           <>
             {/* Hero */}
@@ -76,9 +86,12 @@ export function App() {
                     Write on the wall
                   </h2>
                   <p className="text-xs text-gray-600 mb-3">
-                    Public on Monad testnet. Keep it short and fun.
+                    Public on Monad. Keep it short and fun.
                   </p>
-                  <MessageInput onPosted={() => setRefreshSignal((n) => n + 1)} />
+                  <MessageInput
+                    onPosted={() => setRefreshSignal((n) => n + 1)}
+                    isPaused={isPaused}
+                  />
                 </section>
               </NetworkGuard>
             </div>
@@ -87,11 +100,33 @@ export function App() {
             <div className="max-w-6xl mx-auto px-4 pb-6 pt-2">
               <MessageWall refreshSignal={refreshSignal} />
             </div>
+
+            {/* Archive link — subtle footer, no wallet required to visit */}
+            <div className="text-center pb-6">
+              <a
+                href="#archive"
+                className="text-[10px] text-gray-700 hover:text-gray-500 transition-colors"
+              >
+                testnet archive →
+              </a>
+            </div>
           </>
         )}
 
         {/* Admin back link — only shown on admin page */}
         {isAdmin && (
+          <div className="text-center pb-6 pt-2">
+            <a
+              href="#"
+              className="text-[10px] text-gray-700 hover:text-gray-500 transition-colors"
+            >
+              ← wall
+            </a>
+          </div>
+        )}
+
+        {/* Archive back link — only shown on archive page */}
+        {isArchive && (
           <div className="text-center pb-6 pt-2">
             <a
               href="#"

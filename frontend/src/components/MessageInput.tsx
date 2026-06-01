@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccount } from "wagmi";
-import { useCooldownRemainingV2, usePostMessageV2 } from "../hooks/useWall";
-import { monadTestnet } from "../wagmiConfig";
+import { useCooldownRemaining, usePostMessage } from "../hooks/useWall";
+import { monadMainnet } from "../wagmiConfig";
 
 const MAX_BYTES = 240;
 
@@ -18,20 +18,22 @@ function formatCooldown(seconds: bigint) {
 
 interface Props {
   onPosted: () => void;
+  isPaused: boolean;
 }
 
-export function MessageInput({ onPosted }: Props) {
+export function MessageInput({ onPosted, isPaused }: Props) {
   const { address, isConnected, chainId: walletChainId } = useAccount();
-  const onCorrectChain = walletChainId === monadTestnet.id;
+  // Independent chain check — does not rely on NetworkGuard context
+  const onCorrectChain = walletChainId === monadMainnet.id;
   const [text, setText] = useState("");
   const bytes = byteLength(text);
   const overLimit = bytes > MAX_BYTES;
 
-  const { data: cooldown, refetch: refetchCooldown } = useCooldownRemainingV2(address);
-  const { post, hash, isPending, isConfirming, isSuccess, error } = usePostMessageV2();
+  const { data: cooldown, refetch: refetchCooldown } = useCooldownRemaining(address);
+  const { post, hash, isPending, isConfirming, isSuccess, error } = usePostMessage();
   const lastHandledHash = useRef<string | undefined>(undefined);
 
-  // tick cooldown down every second
+  // Tick cooldown down every second
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!cooldown || cooldown === 0n) return;
@@ -57,11 +59,33 @@ export function MessageInput({ onPosted }: Props) {
   }, [isSuccess, hash, onSuccess]);
 
   const inCooldown = !!cooldown && cooldown > 0n;
-  const canSubmit = isConnected && onCorrectChain && !overLimit && bytes > 0 && !inCooldown && !isPending && !isConfirming;
+  // isPaused is an additional gate — cannot submit even if all other conditions are met
+  const canSubmit =
+    isConnected &&
+    onCorrectChain &&
+    !overLimit &&
+    bytes > 0 &&
+    !inCooldown &&
+    !isPending &&
+    !isConfirming &&
+    !isPaused;
+
+  // Paused banner — wall is readable but posting is blocked
+  if (isPaused) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-4 text-center">
+        <p className="text-yellow-400 text-sm font-medium">
+          The wall is temporarily paused. All posts remain visible.
+        </p>
+      </div>
+    );
+  }
 
   if (!isConnected) {
     return (
-      <p className="text-center text-gray-500 text-sm py-3 md:py-4">Connect your wallet to post a message.</p>
+      <p className="text-center text-gray-500 text-sm py-3 md:py-4">
+        Connect your wallet to post a message.
+      </p>
     );
   }
 
@@ -86,7 +110,7 @@ export function MessageInput({ onPosted }: Props) {
             </span>
           )}
           <button
-            onClick={() => { if (!onCorrectChain) return; post(text); }}
+            onClick={() => { if (!onCorrectChain || isPaused) return; post(text); }}
             disabled={!canSubmit}
             className="px-5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -97,7 +121,7 @@ export function MessageInput({ onPosted }: Props) {
 
       {isConnected && !onCorrectChain && (
         <p className="text-xs text-yellow-400">
-          Switch to Monad Testnet before posting.
+          Switch to Monad Mainnet before posting.
         </p>
       )}
 
