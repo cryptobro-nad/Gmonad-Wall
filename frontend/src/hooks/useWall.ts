@@ -44,6 +44,15 @@ export function useLatestPosts(limit: number) {
   });
 }
 
+export function useMaxTextLength() {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
+    functionName: "maxTextLength",
+    chainId: monadMainnet.id,
+  });
+}
+
 export function useCooldownRemaining(address: `0x${string}` | undefined) {
   return useReadContract({
     address: CONTRACT_ADDRESS,

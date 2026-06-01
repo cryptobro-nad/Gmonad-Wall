@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { useHidePost, useLatestPosts, useOwner, usePause, usePaused, useUnpause } from "../hooks/useWall";
+import { CONTRACT_CONFIGURED } from "../wagmiConfig";
 
 function timeAgo(unixSeconds: bigint) {
   const diff = Math.floor(Date.now() / 1000) - Number(unixSeconds);
@@ -73,6 +74,14 @@ export function AdminPage() {
   }, [hide]);
 
   const hideBusy = hideIsPending || hideIsConfirming;
+
+  if (!CONTRACT_CONFIGURED) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center text-gray-500 text-sm">
+        Mainnet contract is not configured yet.
+      </div>
+    );
+  }
 
   if (!isConnected) {
     return (
