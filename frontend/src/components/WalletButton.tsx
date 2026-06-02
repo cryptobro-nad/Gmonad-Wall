@@ -6,17 +6,6 @@ function truncate(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-type WalletInfo = { name: string; icon: string };
-
-function detectInjectedWallet(): WalletInfo | null {
-  if (typeof window === "undefined") return null;
-  const eth = (window as any).ethereum;
-  if (!eth) return null;
-  if (eth.isRabby) return { name: "Rabby", icon: "🐇" };
-  if (eth.isMetaMask) return { name: "MetaMask", icon: "🦊" };
-  return { name: "Browser Wallet", icon: "🔐" };
-}
-
 interface WalletOptionProps {
   icon: string;
   name: string;
@@ -50,13 +39,8 @@ export function WalletButton() {
   const { connect, connectors, error: connectError } = useConnect();
   const { disconnect } = useDisconnect();
   const [open, setOpen] = useState(false);
-  const [injectedWallet, setInjectedWallet] = useState<WalletInfo | null>(null);
 
-  useEffect(() => {
-    setInjectedWallet(detectInjectedWallet());
-  }, []);
-
-  // Close modal automatically once wallet connects successfully
+  // Close dropdown automatically once wallet connects successfully
   useEffect(() => {
     if (isConnected) setOpen(false);
   }, [isConnected]);
@@ -77,10 +61,13 @@ export function WalletButton() {
 
   const injectedConnector = connectors.find((c) => c.id === "injected");
   const wcConnector = connectors.find((c) => c.id === "walletConnect");
+  // wagmi registers the injected connector at config time regardless of whether an extension
+  // is installed. Check window.ethereum directly to confirm a provider actually exists.
+  const hasInjectedProvider = typeof window !== "undefined" && !!(window as any).ethereum;
 
   function handleConnect(connector: Connector) {
     connect({ connector });
-    // For WalletConnect, keep our modal open so the WC QR modal can overlay it
+    // For WalletConnect, keep our dropdown open so the WC QR modal can overlay it
     // and errors remain visible. For injected wallets close immediately.
     if (connector.id !== "walletConnect") {
       setOpen(false);
@@ -88,23 +75,29 @@ export function WalletButton() {
   }
 
   return (
-    <>
+    // relative wrapper — dropdown is positioned absolute relative to this element,
+    // escaping the header's backdrop-filter stacking context via the z-50 layer.
+    <div className="relative">
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen((v) => !v)}
         className="whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs sm:text-sm font-medium transition-colors"
       >
         Connect Wallet
       </button>
 
       {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          onClick={() => setOpen(false)}
-        >
+        <>
+          {/* Click-away layer — sits below the dropdown (z-40) so clicking outside closes it.
+              Uses fixed inset-0 so it covers the full viewport without clipping issues. */}
           <div
-            className="bg-gray-900 border border-purple-800 rounded-2xl p-6 w-80 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+            className="fixed inset-0 z-40"
+            onClick={() => setOpen(false)}
+          />
+
+          {/* Dropdown panel — anchored below the button, right-aligned.
+              absolute top-full right-0 opens downward from the button edge.
+              z-50 sits above the click-away layer and the sticky header (z-10). */}
+          <div className="absolute top-full right-0 mt-2 z-50 w-80 bg-gray-900 border border-purple-800 rounded-2xl p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-white font-semibold text-lg">Connect Wallet</h2>
               <button
@@ -122,11 +115,11 @@ export function WalletButton() {
             )}
 
             <div className="flex flex-col gap-3">
-              {injectedConnector ? (
+              {injectedConnector && hasInjectedProvider ? (
                 <WalletOption
-                  icon={injectedWallet?.icon ?? "🦊"}
-                  name={injectedWallet?.name ?? "Rabby / MetaMask"}
-                  subtitle="Browser extension"
+                  icon="🔐"
+                  name="Browser Wallet"
+                  subtitle="Active browser extension"
                   onClick={() => handleConnect(injectedConnector)}
                 />
               ) : (
@@ -155,8 +148,8 @@ export function WalletButton() {
               )}
             </div>
           </div>
-        </div>
+        </>
       )}
-    </>
+    </div>
   );
 }
