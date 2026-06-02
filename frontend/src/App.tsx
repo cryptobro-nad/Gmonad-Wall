@@ -46,7 +46,7 @@ export function App() {
               Testnet Archive
             </span>
           ) : (
-            <div className="flex flex-col items-end gap-0.5 min-w-0">
+            <div className="flex flex-col items-center gap-0.5 min-w-0">
               <WalletButton />
               <span className="flex items-center gap-1 text-[10px] text-gray-500 whitespace-nowrap">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />

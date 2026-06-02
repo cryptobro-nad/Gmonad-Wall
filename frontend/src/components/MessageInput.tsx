@@ -104,8 +104,8 @@ export function MessageInput({ onPosted, isPaused }: Props) {
 
   if (!isConnected) {
     return (
-      <p className="text-center text-gray-500 text-sm py-3 md:py-4">
-        Connect your wallet to post a message.
+      <p className="text-center text-gray-500 text-sm py-2">
+        Connect your wallet to leave your mark.
       </p>
     );
   }
@@ -115,7 +115,7 @@ export function MessageInput({ onPosted, isPaused }: Props) {
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Write a short Gmonad message..."
+        placeholder="Write a Gmonad message..."
         rows={2}
         className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 text-white placeholder-gray-500 p-3 resize-none outline-none transition-colors min-h-[82px] md:min-h-[105px]"
       />
