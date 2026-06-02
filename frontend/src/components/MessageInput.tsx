@@ -104,7 +104,7 @@ export function MessageInput({ onPosted, isPaused }: Props) {
 
   if (!isConnected) {
     return (
-      <p className="text-center text-gray-500 text-sm py-2">
+      <p className="text-center text-gray-500 text-sm py-0.5">
         Connect your wallet to leave your mark.
       </p>
     );
