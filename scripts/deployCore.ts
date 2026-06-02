@@ -11,6 +11,13 @@ function isAllowedNetwork(name: string): name is AllowedNetwork {
   return (ALLOWED_NETWORKS as readonly string[]).includes(name);
 }
 
+// ─── Expected chain IDs per network ─────────────────────────────────────────
+// Verified against the actual RPC before any gas is spent.
+const EXPECTED_CHAIN_IDS: Record<AllowedNetwork, number> = {
+  monadMainnet: 143,
+  monadTestnet: 10143,
+};
+
 // ─── Address validation ──────────────────────────────────────────────────────
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const ADDRESS_RE   = /^0x[0-9a-fA-F]{40}$/;
@@ -31,8 +38,7 @@ function outputFilename(networkName: AllowedNetwork): string {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
 
-  // ── 1. Network abort check (synchronous — no gas spent) ─────────────────
-  // Must happen before any contract factory or provider call.
+  // ── Abort check 1: unsupported network (synchronous — no RPC, no gas) ────
   if (!isAllowedNetwork(network.name)) {
     console.error(`\nABORT: deployCore.ts only runs on: ${ALLOWED_NETWORKS.join(", ")}`);
     console.error(`       Current network: "${network.name}"`);
@@ -43,28 +49,86 @@ async function main() {
 
   const networkName = network.name as AllowedNetwork;
 
-  // ── 2. Read environment ──────────────────────────────────────────────────
-  const { chainId }   = await ethers.provider.getNetwork();
-  const [deployer]    = await ethers.getSigners();
-  const adminOwnerEnv = process.env.ADMIN_OWNER_ADDRESS;
-  const hasAdmin      = isValidAddress(adminOwnerEnv);
+  // ── Abort check 2: ADMIN_OWNER_ADDRESS validation (synchronous — no RPC) ─
+  //
+  // monadMainnet: ADMIN_OWNER_ADDRESS is mandatory.
+  //   Missing, invalid, or zero → abort before any deployment.
+  //
+  // monadTestnet: ADMIN_OWNER_ADDRESS is recommended but optional.
+  //   Missing → warn, continue (deployer remains owner for dry-run).
+  //   Set but invalid/zero → abort (bad config is never silently ignored).
 
-  // ── 3. Pre-deploy summary ─────────────────────────────────────────────────
+  const adminOwnerEnv = process.env.ADMIN_OWNER_ADDRESS;
+  const adminDefined  = !!adminOwnerEnv && adminOwnerEnv.trim().length > 0;
+  const adminValid    = isValidAddress(adminOwnerEnv);
+
+  if (networkName === "monadMainnet") {
+    if (!adminValid) {
+      const reason = adminDefined
+        ? `"${adminOwnerEnv}" is not a valid non-zero 40-hex address.`
+        : `ADMIN_OWNER_ADDRESS is not set in .env.`;
+      console.error(`\nABORT: monadMainnet requires a valid ADMIN_OWNER_ADDRESS.`);
+      console.error(`       ${reason}`);
+      console.error(`       Use a fresh dedicated admin wallet. Not a daily wallet.`);
+      console.error(`       No gas was spent. No contract was deployed.\n`);
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  if (networkName === "monadTestnet" && adminDefined && !adminValid) {
+    console.error(`\nABORT: ADMIN_OWNER_ADDRESS is set but invalid on monadTestnet.`);
+    console.error(`       Value: "${adminOwnerEnv}"`);
+    console.error(`       Fix the address or unset ADMIN_OWNER_ADDRESS for a no-transfer dry run.`);
+    console.error(`       No gas was spent. No contract was deployed.\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // ── Abort check 3: verify actual RPC chain ID before spending any gas ─────
+  // Catches misconfigured hardhat.config.ts (wrong RPC pointing to the wrong chain).
+  const { chainId }     = await ethers.provider.getNetwork();
+  const expectedChainId = EXPECTED_CHAIN_IDS[networkName];
+
+  console.log(`\nChain ID verification:`);
+  console.log(`  Hardhat network name: ${networkName}`);
+  console.log(`  Expected chain ID:    ${expectedChainId}`);
+  console.log(`  Actual RPC chain ID:  ${chainId.toString()}`);
+
+  if (Number(chainId) !== expectedChainId) {
+    console.error(`\nABORT: Chain ID mismatch.`);
+    console.error(`       Expected: ${expectedChainId} (${networkName})`);
+    console.error(`       Actual:   ${chainId.toString()}`);
+    console.error(`       Check the rpcUrls in hardhat.config.ts for ${networkName}.`);
+    console.error(`       No gas was spent. No contract was deployed.\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`  Chain ID confirmed ✓`);
+
+  // ── All abort checks passed — safe to proceed ─────────────────────────────
+
+  const [deployer] = await ethers.getSigners();
+
+  // ── Pre-deploy summary ────────────────────────────────────────────────────
   console.log("\n=== GmonadWallCore Deployment ===");
   console.log(`Network:         ${networkName}`);
   console.log(`Chain ID:        ${chainId.toString()}`);
   console.log(`Deployer:        ${deployer.address}`);
-  if (hasAdmin) {
+  if (adminValid) {
     console.log(`Admin owner:     ${adminOwnerEnv}`);
     console.log(`                 (ownership will be transferred after deploy)`);
   } else {
-    console.warn(`Admin owner:     NOT SET`);
-    console.warn(`                 Deployer will remain owner after deploy.`);
-    console.warn(`                 Set ADMIN_OWNER_ADDRESS in .env before mainnet launch.`);
+    console.warn(`Admin owner:     NOT SET — deployer will remain owner`);
+    if (networkName === "monadTestnet") {
+      console.warn(`                 This is acceptable for a dry-run test.`);
+      console.warn(`                 Set ADMIN_OWNER_ADDRESS before mainnet launch.`);
+    }
   }
   console.log("─────────────────────────────────");
 
-  // ── 4. Deploy ─────────────────────────────────────────────────────────────
+  // ── Deploy ────────────────────────────────────────────────────────────────
   console.log("\nDeploying GmonadWallCore...");
   const Factory = await ethers.getContractFactory("GmonadWallCore");
   const wall    = await Factory.deploy();
@@ -76,10 +140,10 @@ async function main() {
   console.log(`Contract:        ${contractAddress}`);
   console.log(`Tx Hash:         ${txHash}`);
 
-  // ── 5. Transfer ownership ─────────────────────────────────────────────────
+  // ── Transfer ownership ────────────────────────────────────────────────────
   let finalOwner = deployer.address;
 
-  if (hasAdmin && adminOwnerEnv) {
+  if (adminValid && adminOwnerEnv) {
     console.log(`\nTransferring ownership to ${adminOwnerEnv}...`);
     const transferTx = await wall.transferOwnership(adminOwnerEnv);
     await transferTx.wait();
@@ -95,11 +159,13 @@ async function main() {
     }
     console.log(`Ownership confirmed: ${finalOwner}`);
   } else {
-    console.warn(`\nWARNING: No ADMIN_OWNER_ADDRESS — deployer remains owner.`);
-    console.warn(`         Call transferOwnership() manually before mainnet launch.\n`);
+    console.warn(`\nWARNING: transferOwnership() was not called — deployer remains owner.`);
+    if (networkName === "monadTestnet") {
+      console.warn(`         Set ADMIN_OWNER_ADDRESS before the mainnet deployment.\n`);
+    }
   }
 
-  // ── 6. Post-deploy reads ──────────────────────────────────────────────────
+  // ── Post-deploy reads ─────────────────────────────────────────────────────
   const isPaused     = await wall.paused();
   const maxTextLen   = await wall.maxTextLength();
   const cooldownSecs = await wall.cooldown();
@@ -114,14 +180,14 @@ async function main() {
   console.log(`getPostCount():    ${postCount.toString()}`);
   console.log(`getNadCount():     ${nadCount.toString()}`);
 
-  // ── 7. Save deployment JSON (public data only — no keys or secrets) ───────
+  // ── Save deployment JSON (public data only — no keys or secrets) ──────────
   const deploymentInfo = {
     network:         networkName,
     chainId:         Number(chainId),
     contractName:    "GmonadWallCore",
     contractAddress,
     deployer:        deployer.address,
-    adminOwner:      hasAdmin ? adminOwnerEnv : null,
+    adminOwner:      adminValid ? adminOwnerEnv : null,
     owner:           finalOwner,
     transactionHash: txHash,
     deployedAt:      new Date().toISOString(),
@@ -138,12 +204,12 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(deploymentInfo, null, 2));
 
-  // ── 8. Next-step instructions ─────────────────────────────────────────────
+  // ── Next-step instructions ────────────────────────────────────────────────
   console.log(`\nSaved:           deployments/${filename}`);
   console.log(`\nNext steps:`);
   console.log(`  1. Copy contractAddress to VITE_CONTRACT_ADDRESS in Vercel env vars.`);
   console.log(`  2. Run: npm run verify:mainnet -- ${contractAddress}`);
-  if (!hasAdmin) {
+  if (!adminValid) {
     console.warn(`  3. ACTION REQUIRED: transferOwnership() was NOT called.`);
     console.warn(`     Set ADMIN_OWNER_ADDRESS and redeploy, or call manually.`);
   }
