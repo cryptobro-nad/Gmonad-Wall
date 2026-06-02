@@ -1,0 +1,16 @@
+{
+  "network": "monadMainnet",
+  "chainId": 143,
+  "contractName": "GmonadWallCore",
+  "contractAddress": "0x3427822490AcEC2932391d06Bf805EE3FFb6Ef7b",
+  "deployer": "0x17182Dd862c91F24E83cd74518D841DA125b2c60",
+  "adminOwner": "0x017F9358AFcC7018dd683001FD33fD7D68230D8B",
+  "owner": "0x017F9358AFcC7018dd683001FD33fD7D68230D8B",
+  "transactionHash": "0x0f86cda78e2e489abe7a6d76fa4cc416b5582dbe645c7de7aea21cf7571baa3e",
+  "deployedAt": "2026-06-02T14:09:08.777Z",
+  "paused": false,
+  "maxTextLength": "120",
+  "cooldown": "60",
+  "postCount": "0",
+  "nadCount": "0"
+}
