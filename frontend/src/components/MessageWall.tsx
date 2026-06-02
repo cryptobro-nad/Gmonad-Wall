@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLatestPosts, usePostCount, usePostsBefore } from "../hooks/useWall";
+import {
+  useArchiveLatestMessages,
+  useArchiveLatestPostsV2,
+  useArchiveMessageCount,
+  useArchivePostCountV2,
+} from "../hooks/useArchive";
 import { MessageCard, UnifiedPost } from "./MessageCard";
 
 const FETCH_LIMIT = 50;
@@ -10,20 +16,29 @@ interface Props {
 }
 
 export function MessageWall({ refreshSignal }: Props) {
+  // Mainnet pagination state (testnet posts load once — no extra pagination needed)
   const [extraPosts, setExtraPosts] = useState<UnifiedPost[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadMoreAttempted, setLoadMoreAttempted] = useState(false);
 
-  const { data: postsData, isLoading, isError, refetch } = useLatestPosts(FETCH_LIMIT);
-  const { data: postCount } = usePostCount();
+  // ── Mainnet reads ─────────────────────────────────────────────────────────
+  const { data: postsData, isLoading: mainnetLoading, isError: mainnetError, refetch } =
+    useLatestPosts(FETCH_LIMIT);
+  const { data: mainnetCount } = usePostCount();
   const { fetchBefore } = usePostsBefore();
+
+  // ── Testnet archive reads (read-only, no pagination) ──────────────────────
+  const { data: v1Data, isLoading: v1Loading } = useArchiveLatestMessages(FETCH_LIMIT);
+  const { data: v2Data, isLoading: v2Loading } = useArchiveLatestPostsV2(FETCH_LIMIT);
+  const { data: v1Count } = useArchiveMessageCount();
+  const { data: v2Count } = useArchivePostCountV2();
 
   useEffect(() => {
     if (refreshSignal > 0) refetch();
   }, [refreshSignal, refetch]);
 
-  // Reset pagination state when fresh data arrives (e.g. after a new post)
+  // Reset mainnet pagination when fresh data arrives (e.g. after a new post)
   useEffect(() => {
     if (!postsData) return;
     const [ids] = postsData as unknown as [bigint[], ...unknown[]];
@@ -32,7 +47,7 @@ export function MessageWall({ refreshSignal }: Props) {
     setLoadMoreAttempted(false);
   }, [postsData]);
 
-  // Normalize mainnet posts → UnifiedPost[]
+  // ── Normalize mainnet posts ───────────────────────────────────────────────
   const mainnetPosts = useMemo<UnifiedPost[]>(() => {
     if (!postsData) return [];
     const [ids, , nadIds, texts, mediaURIs, mediaTypes, timestamps, hiddenFlags] = postsData as [
@@ -50,10 +65,46 @@ export function MessageWall({ refreshSignal }: Props) {
     }));
   }, [postsData]);
 
-  // Merge base + extra, dedup by composite key, filter hidden, sort newest-first
+  // ── Normalize testnet V1 posts ────────────────────────────────────────────
+  const v1Posts = useMemo<UnifiedPost[]>(() => {
+    if (!v1Data) return [];
+    const [ids, texts, timestamps, hiddenFlags] = v1Data as [
+      bigint[], string[], bigint[], boolean[]
+    ];
+    return (ids as bigint[]).map((id, i) => ({
+      source: "v1" as const,
+      id,
+      nadId: null,
+      text: (texts as string[])[i],
+      mediaURI: "",
+      mediaType: 0,
+      timestamp: (timestamps as bigint[])[i],
+      hidden: (hiddenFlags as boolean[])[i],
+    }));
+  }, [v1Data]);
+
+  // ── Normalize testnet V2 posts ────────────────────────────────────────────
+  const v2Posts = useMemo<UnifiedPost[]>(() => {
+    if (!v2Data) return [];
+    const [ids, , nadIds, texts, mediaURIs, mediaTypes, timestamps, hiddenFlags] = v2Data as [
+      bigint[], string[], bigint[], string[], string[], number[], bigint[], boolean[]
+    ];
+    return (ids as bigint[]).map((id, i) => ({
+      source: "v2" as const,
+      id,
+      nadId: (nadIds as bigint[])[i],
+      text: (texts as string[])[i],
+      mediaURI: (mediaURIs as string[])[i],
+      mediaType: Number((mediaTypes as number[])[i]),
+      timestamp: (timestamps as bigint[])[i],
+      hidden: (hiddenFlags as boolean[])[i],
+    }));
+  }, [v2Data]);
+
+  // ── Merge all sources, dedup by composite key, filter hidden, sort newest-first
   const mergedPosts = useMemo<UnifiedPost[]>(() => {
     const seen = new Set<string>();
-    const all = [...mainnetPosts, ...extraPosts].filter((p) => {
+    const all = [...mainnetPosts, ...extraPosts, ...v1Posts, ...v2Posts].filter((p) => {
       if (p.hidden) return false;
       const key = `${p.source}-${p.id}`;
       if (seen.has(key)) return false;
@@ -62,14 +113,15 @@ export function MessageWall({ refreshSignal }: Props) {
     });
     all.sort((a, b) => (a.timestamp > b.timestamp ? -1 : a.timestamp < b.timestamp ? 1 : 0));
     return all;
-  }, [mainnetPosts, extraPosts]);
+  }, [mainnetPosts, extraPosts, v1Posts, v2Posts]);
 
+  // ── loadMore paginates mainnet only — testnet posts are fully loaded ───────
   const loadMore = useCallback(async () => {
     if (isLoadingMore || !hasMore) return;
     setLoadMoreAttempted(true);
-    const all = [...mainnetPosts, ...extraPosts];
-    if (all.length === 0) return;
-    const oldestId = all.reduce((min, p) => (p.id < min ? p.id : min), all[0].id);
+    const allMainnet = [...mainnetPosts, ...extraPosts];
+    if (allMainnet.length === 0) return;
+    const oldestId = allMainnet.reduce((min, p) => (p.id < min ? p.id : min), allMainnet[0].id);
     setIsLoadingMore(true);
     try {
       const raw = await fetchBefore(oldestId, LOAD_MORE_LIMIT);
@@ -95,6 +147,16 @@ export function MessageWall({ refreshSignal }: Props) {
     }
   }, [isLoadingMore, hasMore, mainnetPosts, extraPosts, fetchBefore]);
 
+  // Total count across all sources for display
+  const totalCount =
+    Number(mainnetCount ?? 0n) +
+    Number(v1Count ?? 0n) +
+    Number(v2Count ?? 0n);
+
+  // Show loading only while mainnet is loading (testnet loads in background)
+  const isLoading = mainnetLoading && v1Loading && v2Loading;
+  const isError   = mainnetError;
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-16">
@@ -112,8 +174,8 @@ export function MessageWall({ refreshSignal }: Props) {
       {/* Header row */}
       <div className="flex items-baseline gap-3">
         <h2 className="text-lg font-bold text-white">Community Wall</h2>
-        {postCount !== undefined && Number(postCount) > 0 && (
-          <span className="text-xs text-gray-500">{Number(postCount)} total posts</span>
+        {totalCount > 0 && (
+          <span className="text-xs text-gray-500">{totalCount} total posts</span>
         )}
       </div>
 
@@ -135,7 +197,7 @@ export function MessageWall({ refreshSignal }: Props) {
             ))}
           </div>
 
-          {/* Load more */}
+          {/* Load more (mainnet pagination only) */}
           <div className="flex justify-center pt-4">
             {isLoadingMore ? (
               <span className="text-sm text-purple-400 animate-pulse">Loading older posts…</span>

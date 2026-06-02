@@ -53,15 +53,6 @@ export function MainWallView() {
         <MessageWall refreshSignal={refreshSignal} />
       </div>
 
-      {/* Archive link — subtle, no wallet required */}
-      <div className="text-center pb-6">
-        <a
-          href="#archive"
-          className="text-[10px] text-gray-700 hover:text-gray-500 transition-colors"
-        >
-          testnet archive →
-        </a>
-      </div>
     </>
   );
 }
