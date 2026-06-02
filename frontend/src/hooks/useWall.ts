@@ -53,6 +53,15 @@ export function useMaxTextLength() {
   });
 }
 
+export function useCooldown() {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
+    functionName: "cooldown",
+    chainId: monadMainnet.id,
+  });
+}
+
 export function useCooldownRemaining(address: `0x${string}` | undefined) {
   return useReadContract({
     address: CONTRACT_ADDRESS,
@@ -124,6 +133,40 @@ export function useHidePost() {
   }
 
   return { hide, hash, isPending, isConfirming, isSuccess, error, reset };
+}
+
+export function useSetMaxTextLength() {
+  const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  function setMaxTextLength(newMax: number) {
+    writeContract({
+      address: CONTRACT_ADDRESS,
+      abi: GmonadWallCoreABI,
+      functionName: "setMaxTextLength",
+      args: [BigInt(newMax)],
+      chainId: monadMainnet.id,
+    });
+  }
+
+  return { setMaxTextLength, hash, isPending, isConfirming, isSuccess, error, reset };
+}
+
+export function useSetCooldown() {
+  const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  function setCooldown(newCooldown: number) {
+    writeContract({
+      address: CONTRACT_ADDRESS,
+      abi: GmonadWallCoreABI,
+      functionName: "setCooldown",
+      args: [BigInt(newCooldown)],
+      chainId: monadMainnet.id,
+    });
+  }
+
+  return { setCooldown, hash, isPending, isConfirming, isSuccess, error, reset };
 }
 
 export function usePause() {
