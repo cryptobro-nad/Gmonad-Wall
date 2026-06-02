@@ -50,10 +50,13 @@ export function MessageCard({ post, isNewest }: Props) {
   const accent = ACCENTS[idx];
   const rotation = ROTATIONS[Number(post.id) % ROTATIONS.length];
 
-  const label =
-    post.source === "v1"
-      ? `Post #${post.id.toString()}`
-      : `Nad #${post.nadId?.toString() ?? post.id.toString()}`;
+  // Mainnet posts show Nad # (their permanent on-chain identity).
+  // Testnet V1 and V2 posts show no label — their IDs are from a different chain
+  // and would be misleading alongside mainnet Nad numbers.
+  const label: string | null =
+    post.source === "mainnet" && post.nadId && post.nadId !== 0n
+      ? `Nad #${post.nadId.toString()}`
+      : null;
 
   return (
     <div
@@ -71,8 +74,8 @@ export function MessageCard({ post, isNewest }: Props) {
 
       <p className="text-gray-100 text-sm leading-relaxed break-words">{post.text}</p>
 
-      <div className="flex items-center justify-between text-xs text-gray-500">
-        <span className={`font-mono ${accent.label}`}>{label}</span>
+      <div className={`flex items-center text-xs text-gray-500 ${label !== null ? "justify-between" : "justify-end"}`}>
+        {label !== null && <span className={`font-mono ${accent.label}`}>{label}</span>}
         <span>{timeAgo(post.timestamp)}</span>
       </div>
     </div>
