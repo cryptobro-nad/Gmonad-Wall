@@ -28,7 +28,7 @@ export function MainWallView() {
           Leave your mark on{" "}
           <span className="text-purple-400">Monad</span>
         </h1>
-        <p className="text-xs text-gray-500 leading-relaxed">
+        <p className="text-xs text-gray-300 leading-relaxed">
           Share what's on your mind. The wall won't judge.
         </p>
       </section>
@@ -37,7 +37,7 @@ export function MainWallView() {
       <div className="max-w-3xl mx-auto px-4 pb-2">
         <NetworkGuard>
           <section className="bg-gray-900 border border-gray-800 rounded-2xl p-4 md:p-5">
-            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">
               Write on the wall
             </h2>
             <MessageInput
