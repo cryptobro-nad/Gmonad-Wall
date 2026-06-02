@@ -7,7 +7,10 @@
     "test": "hardhat test",
     "deploy:testnet": "hardhat run scripts/deploy.ts --network monadTestnet",
     "deploy:testnet-v2": "hardhat run scripts/deployV2.ts --network monadTestnet",
-    "verify:testnet": "hardhat verify --network monadTestnet"
+    "deploy:testnet:core": "hardhat run scripts/deployCore.ts --network monadTestnet",
+    "deploy:mainnet": "hardhat run scripts/deployCore.ts --network monadMainnet",
+    "verify:testnet": "hardhat verify --network monadTestnet",
+    "verify:mainnet": "hardhat verify --network monadMainnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
