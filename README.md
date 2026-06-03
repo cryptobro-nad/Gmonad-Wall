@@ -1,22 +1,32 @@
-﻿# Gmonad Wall
+# Gmonad Wall
 
-Mainnet-ready Gmonad Wall dApp.
+An on-chain message wall on Monad Mainnet.
 
-This repo is a clean controlled migration from the testnet V1/V2 project.
+**Live site:** https://www.gmonadwall.xyz
 
-Status:
+## Contract
 
-* Mainnet migration planning
-* No mainnet contract deployed yet
-* Testnet V1/V2 history will be preserved through a read-only archive
-* Wallet flow from the working testnet app must be preserved
+| | |
+|---|---|
+| Address | `0x3427822490AcEC2932391d06Bf805EE3FFb6Ef7b` |
+| Network | Monad Mainnet (chainId 143) |
+| Verified | https://monadvision.com/contracts/full_match/143/0x3427822490AcEC2932391d06Bf805EE3FFb6Ef7b/ |
 
-Safety:
+## Features
 
-* No token approvals
-* No NFT approvals
-* No permit signatures
-* No arbitrary message signing
-* No mainnet deployment until Phase 0 gates are locked
+- On-chain messages — permanent, wall-style feed
+- Permanent Nad IDs — one identity per wallet
+- Merged testnet history — old V1/V2 posts preserved in read-only archive
+- Masonry/pinboard layout
+- Admin controls — moderation and configurable settings
 
-Do not add fake mainnet contract addresses or unverified RPC details.
+## Stack
+
+React · Vite · wagmi · viem · Hardhat · Tailwind CSS
+
+## Safety
+
+- No token approvals
+- No NFT approvals
+- No permit signatures
+- No arbitrary message signing
