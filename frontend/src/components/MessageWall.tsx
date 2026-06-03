@@ -187,7 +187,7 @@ export function MessageWall({ refreshSignal }: Props) {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-start">
             {mergedPosts.map((post, i) => (
               <MessageCard
                 key={`${post.source}-${post.id.toString()}`}
