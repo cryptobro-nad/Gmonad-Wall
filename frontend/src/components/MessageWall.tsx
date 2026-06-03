@@ -191,7 +191,7 @@ export function MessageWall({ refreshSignal }: Props) {
             {mergedPosts.map((post, i) => (
               <div
                 key={`${post.source}-${post.id.toString()}`}
-                className="break-inside-avoid mb-6"
+                className="break-inside-avoid mb-6 pt-3"
               >
                 <MessageCard
                   post={post}
