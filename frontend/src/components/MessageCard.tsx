@@ -60,7 +60,7 @@ export function MessageCard({ post, isNewest }: Props) {
 
   return (
     <div
-      className={`relative bg-gray-900 border-2 ${accent.border} rounded-xl p-4 pt-5 flex flex-col gap-2 ${rotation} hover:-translate-y-1 hover:shadow-xl transition-all duration-200`}
+      className={`relative bg-gray-900 border-2 ${accent.border} rounded-xl px-4 py-3 flex flex-col gap-2 ${rotation} hover:-translate-y-1 hover:shadow-xl transition-all duration-200`}
     >
       {/* pin dot */}
       <span className={`absolute -top-2 left-5 w-3 h-3 rounded-full ${accent.pin} ring-2 ring-gray-950`} />
