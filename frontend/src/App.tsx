@@ -26,18 +26,25 @@ export function App() {
       {/* Nav */}
       <header className="border-b border-gray-800 bg-gray-900/60 backdrop-blur sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-          <span className="flex items-center gap-1.5 text-xl font-extrabold tracking-tight whitespace-nowrap shrink-0">
-            <img
-              src="/gmonad-wall-mark.png"
-              alt="Gmonad Wall logo"
-              className="h-7 w-auto"
-              draggable={false}
-            />
-            <span>
-              <span className="text-white">Gmonad</span>
-              <span className="text-purple-400"> Wall</span>
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="flex items-center gap-1.5 text-xl font-extrabold tracking-tight whitespace-nowrap">
+              <img
+                src="/gmonad-wall-mark.png"
+                alt="Gmonad Wall logo"
+                className="h-7 w-auto"
+                draggable={false}
+              />
+              <span>
+                <span className="text-white">Gmonad</span>
+                <span className="text-purple-400"> Wall</span>
+              </span>
             </span>
-          </span>
+            {!isArchive && !isAdmin && (
+              <span className="hidden md:block text-xs text-gray-400 whitespace-nowrap">
+                Leave your mark on <span className="text-purple-400 font-medium">Monad</span>
+              </span>
+            )}
+          </div>
 
           {/* Fix 3: archive route hides Connect Wallet and shows a read-only badge instead.
               Main wall and admin retain the full wallet button. */}
