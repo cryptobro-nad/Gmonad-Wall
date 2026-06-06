@@ -15,23 +15,11 @@ export function MainWallView() {
 
   return (
     <>
-      {/* Hero */}
-      <section className="max-w-3xl mx-auto px-4 pt-3 pb-2 text-center md:pt-4 md:pb-3">
-        <h1
-          className="leading-tight text-white mb-1.5"
-          style={{
-            fontFamily: "'Bebas Neue', 'Arial Narrow', sans-serif",
-            fontSize: "clamp(24px, 5.5vw, 38px)",
-            letterSpacing: "0.04em",
-          }}
-        >
-          Leave your mark on{" "}
-          <span className="text-purple-400">Monad</span>
-        </h1>
-        <p className="text-xs text-gray-300 leading-relaxed">
-          Share what's on your mind. The wall won't judge.
-        </p>
-      </section>
+      {/* Subtitle */}
+      <p className="max-w-3xl mx-auto px-4 pt-2 pb-2 text-center text-sm text-gray-300 leading-relaxed">
+        Share what&apos;s on your mind.{" "}
+        <span className="text-purple-400/80">The wall won&apos;t judge.</span>
+      </p>
 
       {/* Composer */}
       <div className="max-w-3xl mx-auto px-4 pb-2">
