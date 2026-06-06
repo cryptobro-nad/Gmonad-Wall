@@ -5,9 +5,20 @@
 @tailwind utilities;
 
 body {
-  background-image: radial-gradient(
-    ellipse 120% 40% at 50% -5%,
-    rgba(124, 58, 237, 0.07) 0%,
-    transparent 60%
-  );
+  background-color: #080b14;
+  background-image:
+    /* purple glow at top */
+    radial-gradient(
+      ellipse 120% 40% at 50% -5%,
+      rgba(124, 58, 237, 0.07) 0%,
+      transparent 60%
+    ),
+    /* horizontal mortar lines */
+    linear-gradient(rgba(100, 116, 139, 0.14) 2px, transparent 2px),
+    /* vertical mortar — even rows */
+    linear-gradient(90deg, rgba(100, 116, 139, 0.09) 1px, transparent 1px),
+    /* vertical mortar — odd rows, half-brick offset */
+    linear-gradient(90deg, rgba(100, 116, 139, 0.09) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 48px, 120px 96px, 120px 96px;
+  background-position: 0 0, 0 0, 0 0, 60px 48px;
 }
