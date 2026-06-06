@@ -25,19 +25,14 @@ const ROTATIONS = [
   "rotate-0",
 ] as const;
 
-function timeAgo(unixSeconds: bigint) {
-  const diff = Math.floor(Date.now() / 1000) - Number(unixSeconds);
-  if (diff < 60) return "just now";
-  if (diff < 3600) {
-    const m = Math.floor(diff / 60);
-    return `${m} minute${m === 1 ? "" : "s"} ago`;
-  }
-  if (diff < 86400) {
-    const h = Math.floor(diff / 3600);
-    return `${h} hour${h === 1 ? "" : "s"} ago`;
-  }
-  const d = Math.floor(diff / 86400);
-  return `${d} day${d === 1 ? "" : "s"} ago`;
+function formatTimestamp(unixSeconds: bigint) {
+  const d = new Date(Number(unixSeconds) * 1000);
+  const month = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+  const day = d.getUTCDate();
+  const year = d.getUTCFullYear();
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${month} ${day}, ${year} · ${hh}:${mm} UTC`;
 }
 
 interface Props {
@@ -76,7 +71,7 @@ export function MessageCard({ post, isNewest }: Props) {
 
       <div className={`flex items-center text-xs text-gray-500 ${label !== null ? "justify-between" : "justify-end"}`}>
         {label !== null && <span className={`font-mono ${accent.label}`}>{label}</span>}
-        <span>{timeAgo(post.timestamp)}</span>
+        <span>{formatTimestamp(post.timestamp)}</span>
       </div>
     </div>
   );
