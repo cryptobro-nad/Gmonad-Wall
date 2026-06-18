@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLatestPosts, usePostCount, usePostsBefore } from "../hooks/useWall";
+import {
+  useLatestPosts,
+  usePostCount,
+  usePostsBefore,
+  usePostsByWallet,
+  useOwnerOfNad,
+} from "../hooks/useWall";
 import {
   useArchiveLatestMessages,
   useArchiveLatestPostsV2,
@@ -7,9 +13,16 @@ import {
   useArchivePostCountV2,
 } from "../hooks/useArchive";
 import { MessageCard, UnifiedPost } from "./MessageCard";
+import { parseSearchInput } from "../lib/searchParser";
 
 const FETCH_LIMIT = 50;
 const LOAD_MORE_LIMIT = 25;
+const SEARCH_LIMIT = 50;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+function shortAddr(a: string) {
+  return `${a.slice(0, 6)}...${a.slice(-4)}`;
+}
 
 interface Props {
   refreshSignal: number;
@@ -21,6 +34,9 @@ export function MessageWall({ refreshSignal }: Props) {
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadMoreAttempted, setLoadMoreAttempted] = useState(false);
+
+  // Mainnet-only search state (Phase 13B)
+  const [searchText, setSearchText] = useState("");
 
   // ── Mainnet reads ─────────────────────────────────────────────────────────
   const { data: postsData, isLoading: mainnetLoading, isError: mainnetError, refetch } =
@@ -147,6 +163,54 @@ export function MessageWall({ refreshSignal }: Props) {
     }
   }, [isLoadingMore, hasMore, mainnetPosts, extraPosts, fetchBefore]);
 
+  // ── Mainnet-only search (Phase 13B) ────────────────────────────────────────
+  const parsed = useMemo(() => parseSearchInput(searchText), [searchText]);
+
+  // Nad → owner resolution (disabled unless a valid Nad ID is parsed)
+  const nadIdArg = parsed.kind === "nad" ? parsed.nadId : undefined;
+  const ownerQuery = useOwnerOfNad(nadIdArg);
+  const resolvedOwner =
+    parsed.kind === "nad" ? (ownerQuery.data as `0x${string}` | undefined) : undefined;
+  const ownerIsZero = !!resolvedOwner && resolvedOwner.toLowerCase() === ZERO_ADDRESS;
+
+  // Wallet to query: direct address, or the Nad's resolved (non-zero) owner
+  const searchAddress: `0x${string}` | undefined =
+    parsed.kind === "address"
+      ? parsed.address
+      : parsed.kind === "nad" && resolvedOwner && !ownerIsZero
+      ? resolvedOwner
+      : undefined;
+  const walletQuery = usePostsByWallet(searchAddress, SEARCH_LIMIT);
+
+  // Map the getPostsByWallet tuple → UnifiedPost[], dropping hidden posts via hiddenFlags
+  const searchResults = useMemo<UnifiedPost[]>(() => {
+    const raw = walletQuery.data;
+    if (!raw) return [];
+    const [ids, , nadIds, texts, mediaURIs, mediaTypes, timestamps, hiddenFlags] = raw as [
+      bigint[], string[], bigint[], string[], string[], number[], bigint[], boolean[]
+    ];
+    return (ids as bigint[])
+      .map((id, i) => ({
+        source: "mainnet" as const,
+        id,
+        nadId: (nadIds as bigint[])[i],
+        text: (texts as string[])[i],
+        mediaURI: (mediaURIs as string[])[i],
+        mediaType: Number((mediaTypes as number[])[i]),
+        timestamp: (timestamps as bigint[])[i],
+        hidden: (hiddenFlags as boolean[])[i],
+      }))
+      .filter((p) => !p.hidden);
+  }, [walletQuery.data]);
+
+  // Raw (pre-hidden-filter) count, to know if the 50-result cap was hit
+  const rawResultCount = useMemo(() => {
+    const raw = walletQuery.data;
+    if (!raw) return 0;
+    const [ids] = raw as unknown as [bigint[], ...unknown[]];
+    return ids.length;
+  }, [walletQuery.data]);
+
   // Total count across all sources for display
   const totalCount =
     Number(mainnetCount ?? 0n) +
@@ -156,6 +220,14 @@ export function MessageWall({ refreshSignal }: Props) {
   // Show loading only while mainnet is loading (testnet loads in background)
   const isLoading = mainnetLoading && v1Loading && v2Loading;
   const isError   = mainnetError;
+
+  // Search-mode derived display values (computed with proper narrowing)
+  const isSearching = parsed.kind === "address" || parsed.kind === "nad";
+  const isNadSearch = parsed.kind === "nad";
+  const searchLoading = ownerQuery.isLoading || walletQuery.isLoading;
+  let searchLabel = "";
+  if (parsed.kind === "address") searchLabel = `Searching by wallet ${shortAddr(parsed.address)}`;
+  else if (parsed.kind === "nad") searchLabel = `Searching by Nad #${parsed.nadId.toString()}`;
 
   if (isLoading) {
     return (
@@ -171,21 +243,95 @@ export function MessageWall({ refreshSignal }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Header row */}
-      <div className="flex items-baseline gap-3">
-        <h2 className="text-lg font-bold text-white">Community Wall</h2>
-        {totalCount > 0 && (
-          <span className="text-xs text-gray-500">{totalCount} total posts</span>
-        )}
+      {/* Wall header — title/count, then the search input below it (Phase 13B) */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-lg font-bold text-white">Community Wall</h2>
+          {totalCount > 0 && (
+            <span className="text-xs text-gray-500">{totalCount} total posts</span>
+          )}
+        </div>
+
+        {/* Search input — full width on mobile, capped and left-aligned on desktop */}
+        <div className="w-full sm:max-w-sm">
+          <div className="relative">
+            <input
+              type="text"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search Nad # or full 0x wallet"
+              spellCheck={false}
+              autoComplete="off"
+              className="w-full rounded-lg bg-gray-900 border border-gray-700 focus:border-purple-500 outline-none px-3 py-1.5 pr-8 text-sm text-gray-200 placeholder-gray-500 transition-colors"
+            />
+            {searchText.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSearchText("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200 transition-colors"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {parsed.kind === "invalid" && (
+            <p className="mt-1 text-xs text-gray-500">{parsed.reason}</p>
+          )}
+        </div>
       </div>
 
-      {/* Grid */}
-      {mergedPosts.length === 0 ? (
+      {isSearching ? (
+        /* ── Search mode (mainnet only) ──────────────────────────────────── */
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-base font-semibold text-white">Mainnet search results</h3>
+              <span className="text-[11px] uppercase tracking-wider text-purple-400/80">
+                Mainnet posts only
+              </span>
+            </div>
+            <p className="text-xs text-gray-500">{searchLabel}</p>
+          </div>
+
+          {searchLoading ? (
+            <div className="flex justify-center py-12">
+              <span className="text-purple-400 animate-pulse">Searching…</span>
+            </div>
+          ) : isNadSearch && ownerIsZero ? (
+            <p className="py-10 text-center text-gray-500">No Nad found.</p>
+          ) : searchResults.length === 0 ? (
+            <p className="py-10 text-center text-gray-500">
+              {isNadSearch
+                ? "No mainnet posts found for this Nad."
+                : "No mainnet posts found for this wallet."}
+            </p>
+          ) : (
+            <>
+              <div className="columns-1 md:columns-2 xl:columns-3 gap-6">
+                {searchResults.map((post) => (
+                  <div
+                    key={`${post.source}-${post.id.toString()}`}
+                    className="break-inside-avoid mb-6 pt-3"
+                  >
+                    <MessageCard post={post} />
+                  </div>
+                ))}
+              </div>
+              {rawResultCount >= SEARCH_LIMIT && (
+                <p className="text-center text-xs text-gray-600">Showing up to 50 results.</p>
+              )}
+            </>
+          )}
+        </div>
+      ) : mergedPosts.length === 0 ? (
+        /* ── Normal feed: empty ──────────────────────────────────────────── */
         <div className="flex flex-col items-center gap-2 py-16 text-gray-500">
           <span className="text-4xl">🫙</span>
           <p>No messages yet. Be the first!</p>
         </div>
       ) : (
+        /* ── Normal feed ─────────────────────────────────────────────────── */
         <>
           <div className="columns-1 md:columns-2 xl:columns-3 gap-6">
             {mergedPosts.map((post, i) => (
