@@ -99,6 +99,52 @@ export function useOwner() {
   });
 }
 
+// ─── Search read hooks (Phase 13A — mainnet-only, no UI wired yet) ──────────────
+// Foundation for search by wallet address or Nad ID. Reads only. Results are
+// filtered for hidden posts in the later UI step via the hiddenFlags column,
+// exactly like the existing wall normalization.
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+// Reactive read of a wallet's posts (newest-first; the contract caps at 50).
+// Disabled for undefined/zero addresses so getPostsByWallet is never called for 0x0.
+export function usePostsByWallet(address: `0x${string}` | undefined, limit: number) {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
+    functionName: "getPostsByWallet",
+    args: address ? [address, BigInt(limit)] : undefined,
+    chainId: monadMainnet.id,
+    query: { enabled: !!address && address.toLowerCase() !== ZERO_ADDRESS },
+  });
+}
+
+// Resolves a Nad ID to its owner address. A zero-address result means "No Nad found".
+// Disabled for undefined or non-positive Nad IDs.
+export function useOwnerOfNad(nadId: bigint | undefined) {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
+    functionName: "ownerOfNad",
+    args: nadId !== undefined ? [nadId] : undefined,
+    chainId: monadMainnet.id,
+    query: { enabled: nadId !== undefined && nadId > 0n },
+  });
+}
+
+// Optional helper: resolves a wallet to its Nad ID (0 = none). Useful for labeling
+// a searched wallet's Nad number in the later UI step.
+export function useNadIdOf(address: `0x${string}` | undefined) {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: GmonadWallCoreABI,
+    functionName: "nadIdOf",
+    args: address ? [address] : undefined,
+    chainId: monadMainnet.id,
+    query: { enabled: !!address && address.toLowerCase() !== ZERO_ADDRESS },
+  });
+}
+
 // ─── Write hooks ──────────────────────────────────────────────────────────────
 
 export function usePostMessage() {
